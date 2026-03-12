@@ -1,0 +1,263 @@
+{
+  "name": "Personal Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "personal-assistant",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "personal-assistant"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.query }}",
+        "options": {
+          "systemMessage": "=You are a helpful, friendly personal assistant. You have a warm personality and remember everything about the user.\n\n## Your Personality\n- You are concise but thorough\n- You speak naturally and conversationally\n- You proactively recall what you know about the user to personalize responses\n\n## Memory & Persona Rules\n- When the user shares ANY personal information (name, location, preferences, habits, job, family, interests, etc.), ALWAYS use the `save_user_fact` tool to store it. Categorize facts as: identity, preference, location, work, family, interest, habit, or general.\n- At the START of each new conversation (when you have no recent context), use `get_user_facts` to load what you know about the user. Use this information to personalize your greeting and responses.\n- Never tell the user you are \"saving a fact\" or \"loading facts\" -- just do it seamlessly.\n\n## Reminder Rules\n- When the user asks you to remind them about something, use `save_reminder` to store it. Parse the due date/time if mentioned.\n- When the user asks about their reminders, use `get_reminders` to retrieve them.\n- You can proactively mention upcoming reminders when relevant.\n\n## Current Context\n- User ID: {{ $('Webhook').item.json.body.userId }}\n- Session ID: {{ $('Webhook').item.json.body.sessionId }}\n- Source: {{ $('Webhook').item.json.body.metadata?.source || 'api' }}"
+        }
+      },
+      "id": "ai-agent",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "groq-model",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [340, 520],
+      "credentials": {
+        "groqApi": {
+          "id": "REPLACE_WITH_GROQ_CREDENTIAL_ID",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Webhook').item.json.body.userId }}-{{ $('Webhook').item.json.body.sessionId }}",
+        "tableName": "n8n_chat_histories",
+        "contextWindowLength": 20
+      },
+      "id": "postgres-memory",
+      "name": "Postgres Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [480, 520],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Save a personal fact about the user for long-term memory. Use this whenever the user shares personal information like their name, location, preferences, job, family details, interests, or habits.",
+        "method": "POST",
+        "url": "http://backend:8080/internal/user-facts",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"user_id\": \"{user_id}\", \"fact\": \"{fact}\", \"category\": \"{category}\"}",
+        "placeholderDefinitions": {
+          "values": [
+            {"name": "user_id", "description": "The user ID from the current context", "type": "string"},
+            {"name": "fact", "description": "The personal fact to save (e.g. 'User's name is Raj', 'Prefers concise answers')", "type": "string"},
+            {"name": "category", "description": "Category of the fact: identity, preference, location, work, family, interest, habit, or general", "type": "string"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "tool-save-fact",
+      "name": "save_user_fact",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [620, 520]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Retrieve all saved personal facts about the user. Use this at the start of conversations to recall who the user is, or when you need to reference something the user told you before.",
+        "method": "GET",
+        "url": "http://backend:8080/internal/user-facts?user_id={user_id}",
+        "placeholderDefinitions": {
+          "values": [
+            {"name": "user_id", "description": "The user ID to fetch facts for", "type": "string"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "tool-get-facts",
+      "name": "get_user_facts",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [760, 520]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Save a reminder for the user. Use this when the user asks to be reminded about something. Include the due date/time if mentioned.",
+        "method": "POST",
+        "url": "http://backend:8080/internal/reminders",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"user_id\": \"{user_id}\", \"reminder\": \"{reminder}\", \"due_at\": \"{due_at}\"}",
+        "placeholderDefinitions": {
+          "values": [
+            {"name": "user_id", "description": "The user ID from the current context", "type": "string"},
+            {"name": "reminder", "description": "What to remind the user about", "type": "string"},
+            {"name": "due_at", "description": "Optional due date/time in ISO8601 format (e.g. 2026-03-15T10:00:00Z). Use empty string if no time was mentioned.", "type": "string"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "tool-save-reminder",
+      "name": "save_reminder",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [900, 520]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Retrieve the user's pending reminders. Use this when the user asks about their reminders, or to proactively mention upcoming ones.",
+        "method": "GET",
+        "url": "http://backend:8080/internal/reminders?user_id={user_id}",
+        "placeholderDefinitions": {
+          "values": [
+            {"name": "user_id", "description": "The user ID to fetch reminders for", "type": "string"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "tool-get-reminders",
+      "name": "get_reminders",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [1040, 520]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.output }) }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [740, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "save_user_fact": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_user_facts": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "save_reminder": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_reminders": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "personal-agent"
+    }
+  ]
+}
