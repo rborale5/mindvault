@@ -1,33 +1,14 @@
 # MindVault
 
-A Go backend server that bridges **Alexa Custom Skills** and **REST API calls** to **n8n AI agent workflows** via webhooks. Features a pre-built **Personal Assistant** workflow powered by **Groq** (free tier) with persistent memory, user persona storage, and reminders. Adding new agents requires zero backend code changes — just create a new n8n workflow.
+An AI-powered **Personal Assistant** that remembers who you are, manages your reminders, and holds natural conversations across sessions. Built with **n8n** AI agent workflows and **Groq** (free tier), backed by persistent memory in **PostgreSQL**. Talk to it through **Alexa**, a **REST API**, or any client you like — and spin up new agents without writing a single line of code.
 
 ## Architecture
 
-```
-Alexa Device
-    │ (voice)
-    ▼
-Alexa Service
-    │ POST /alexa (JSON)
-    ▼
-┌─────────────────────────────────────────┐
-│  Docker Compose                         │
-│                                         │
-│  ┌──────────────┐   ┌──────────────┐   │
-│  │ Go Backend   │──▶│ n8n          │   │
-│  │ :8080        │◀──│ :5678        │   │
-│  └──────────────┘   └──────┬───────┘   │
-│                            │            │
-│                     ┌──────▼───────┐   │
-│                     │ PostgreSQL   │   │
-│                     └──────────────┘   │
-└─────────────────────────────────────────┘
-```
+![MindVault Architecture](docs/architecture-diagram.png)
 
-**Flow:** User speaks to Alexa → Alexa posts JSON to Go backend → backend extracts the query and calls the matching n8n webhook → n8n AI Agent processes the request → response flows back through the backend as Alexa speech output.
+**Flow:** User speaks to Alexa (or calls the REST API) → the request is routed to the matching n8n AI Agent → the agent reasons over the query using its tools and memory → the response flows back as Alexa speech or JSON.
 
-The backend also exposes `POST /api/agents/{name}` for non-Alexa clients (API testing, Slack bots, web UIs, etc.).
+Any agent can also be reached directly via `POST /api/agents/{name}`, making it easy to integrate with Slack bots, web UIs, mobile apps, or anything that speaks HTTP.
 
 ## Quick Start
 
@@ -54,9 +35,9 @@ docker compose up -d
 ```
 
 This starts:
-- **PostgreSQL** on port 5432 (internal only, with `user_facts` and `reminders` tables auto-created)
-- **n8n** on port 5678 (accessible at http://localhost:5678)
-- **Go backend** on port 8080
+- **PostgreSQL** on port 5432 (internal — stores agent memory, user facts, and reminders)
+- **n8n** on port 5678 (agent workflow engine, accessible at http://localhost:5678)
+- **Backend** on port 8080 (routes requests from Alexa and the API to the right agent)
 
 ### 3. Set up the Personal Assistant workflow
 
@@ -147,7 +128,7 @@ curl -X POST http://localhost:8080/api/agents/personal-assistant \
 
 ## Adding New Agents
 
-Adding a new agent requires **zero backend code changes**:
+Adding a new agent requires **zero code changes** — everything is configured through n8n and environment variables:
 
 1. **n8n**: Create a new workflow with a Webhook trigger (e.g., path: `my-new-agent`) → AI Agent → Respond to Webhook
 2. **Config**: Add the intent mapping in `INTENT_AGENT_MAP` env var: `{"MyNewIntent": "my-new-agent"}`
@@ -192,7 +173,7 @@ Body: {"query": "your question", "sessionId": "optional-session", "userId": "opt
 
 | Variable | Default | Description |
 |---|---|---|
-| `SERVER_PORT` | `8080` | Port for the Go backend |
+| `SERVER_PORT` | `8080` | Port for the backend API |
 | `N8N_WEBHOOK_BASE_URL` | `http://n8n:5678` | n8n internal URL |
 | `ALEXA_SKILL_ID` | (empty) | Your Alexa Skill ID for request validation |
 | `ALEXA_VERIFY_REQUESTS` | `false` | Enable Alexa signature verification |
@@ -216,20 +197,7 @@ go build -o server ./cmd/server
 
 The **Personal Assistant** workflow uses three independent layers of persistence, all backed by the shared Postgres instance:
 
-```
-Conversation turn
-      │
-      ▼
-┌─────────────────────────────────────────────────────┐
-│  AI Agent (Groq)                                    │
-│                                                     │
-│  reads on every turn ──▶ Postgres Chat Memory       │  ← conversation history
-│  reads on every turn ──▶ get_user_facts             │  ← user persona
-│  writes when needed  ──▶ save_user_fact             │  ← new facts detected
-│  reads/writes        ──▶ save_reminder              │  ← create reminder
-│                          get_reminders              │  ← list reminders
-└─────────────────────────────────────────────────────┘
-```
+![Memory, Persona & Reminders Data Flow](docs/memory-flow-diagram.png)
 
 **Conversation Memory (`n8n_chat_histories` table)**
 n8n's built-in Postgres Chat Memory node stores the full message history scoped by `sessionId`. The agent automatically receives recent messages as context so it can follow multi-turn conversations without the client re-sending history.
