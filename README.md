@@ -1,4 +1,4 @@
-# MindVault
+# MindVault [WIP]
 
 > An AI-powered second brain that remembers who you are, captures what you read, and keeps your notes, summaries, and reminders synced to your Obsidian vault.
 
