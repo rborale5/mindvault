@@ -1,6 +1,11 @@
 # MindVault
 
-An AI-powered **Personal Assistant** that remembers who you are, manages your reminders, and holds natural conversations across sessions. Built with **n8n** AI agent workflows and **Groq** (free tier), backed by persistent memory in **PostgreSQL**. Talk to it through **Alexa**, a **REST API**, or any client you like — and spin up new agents without writing a single line of code.
+> An AI-powered second brain that remembers who you are, captures what you read, and keeps your notes, summaries, and reminders synced to your Obsidian vault.
+
+Holds natural multi-turn conversations across sessions, learns your preferences and persona over time, and lets you spin up new agents without writing a single line of code.
+
+Built on **n8n** AI agent workflows and **Groq** (free tier), backed by persistent memory in **PostgreSQL**. Talk to it through **Alexa**, a **REST API**, or any client that speaks HTTP.
+
 
 ## Architecture
 
